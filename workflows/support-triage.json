@@ -1,0 +1,179 @@
+{
+  "id": "SupportTriage001",
+  "name": "Support triage (Claude + MCP)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "nodes": [
+    {
+      "id": "8f0c6a51-1d2e-4b7a-9c01-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "5d2f8a64-7c1b-4e0a-9f3e-2b6a1c9d4e01",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "support-triage",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "8f0c6a51-1d2e-4b7a-9c01-000000000002",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Support request\nName: {{ $json.body.name }}\nEmail: {{ $json.body.email }}\nSubject: {{ $json.body.subject }}\n\nMessage:\n{{ $json.body.body }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You are the support triage agent for Tasklane, a hosted task-board app for teams. You receive one support request with the sender's name, email, subject and message.\n\nFollow these steps in order for every request:\n1. Call lookup_customer with the sender's email. If found is false, continue and treat the sender as an unverified contact.\n2. Call search_kb with 2 to 6 keywords that describe the problem. If the results are not relevant, call it once more with different keywords.\n3. Decide the ticket fields:\n   - category: one of billing, technical, outage, feature_request, account, other.\n   - priority: one of low, normal, high, urgent.\n     urgent: the service is down or data is lost for a business or enterprise customer.\n     high: an outage or blocking problem for any other customer, or a customer who is angry and at risk of leaving.\n     normal: billing questions, account and login problems, bugs with a workaround.\n     low: feature requests and general questions.\n   - summary: one sentence, at most 25 words, written for a support engineer.\n   - suggested_reply: a reply to the customer of 60 to 150 words, addressed by first name. Use only facts from the KB articles you retrieved. Do not promise refunds, credits, dates or features that the articles do not state. If the sender is not a known customer, ask them to confirm the email address on their account.\n4. Call create_ticket exactly once with those values.\n5. Reply with only a JSON object. No markdown fences, no text before or after it. Use exactly these keys:\n{\"ticket_id\": <integer returned by create_ticket>, \"customer_email\": \"<sender email>\", \"category\": \"<category>\", \"priority\": \"<priority>\", \"summary\": \"<summary>\", \"suggested_reply\": \"<suggested reply>\", \"kb_articles_used\": [\"<slug>\"]}\nkb_articles_used lists the slugs of the articles you relied on, or an empty list if none were relevant.\n\nNever call create_ticket before lookup_customer and search_kb.",
+          "maxIterations": 8,
+          "enableStreaming": false
+        }
+      }
+    },
+    {
+      "id": "8f0c6a51-1d2e-4b7a-9c01-000000000003",
+      "name": "Anthropic Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.6,
+      "position": [
+        200,
+        240
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "claude-sonnet-5-5"
+        },
+        "options": {
+          "maxTokensToSample": 2048
+        }
+      },
+      "credentials": {
+        "anthropicApi": {
+          "id": "AnthropicCred001",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "id": "8f0c6a51-1d2e-4b7a-9c01-000000000004",
+      "name": "MCP Client",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        420,
+        240
+      ],
+      "parameters": {
+        "endpointUrl": "http://mcp-server:8000/mcp",
+        "serverTransport": "httpStreamable",
+        "authentication": "none",
+        "include": "all",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "8f0c6a51-1d2e-4b7a-9c01-000000000005",
+      "name": "Parse Ticket JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// The agent is told to return bare JSON; strip code fences or stray text defensively.\nconst raw = String($input.first().json.output ?? '').trim();\nconst unfenced = raw.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/, '');\nconst start = unfenced.indexOf('{');\nconst end = unfenced.lastIndexOf('}');\ntry {\n  return [{ json: JSON.parse(unfenced.slice(start, end + 1)) }];\n} catch (error) {\n  return [{ json: { error: 'agent_output_not_json', raw } }];\n}"
+      }
+    },
+    {
+      "id": "8f0c6a51-1d2e-4b7a-9c01-000000000006",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        900,
+        0
+      ],
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Client": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Ticket JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Ticket JSON": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
