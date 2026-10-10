@@ -19,7 +19,10 @@ flowchart LR
 <!-- Screenshot: open the workflow in n8n, capture the canvas, save it as docs/workflow.png and uncomment the line below. -->
 <!-- ![n8n workflow canvas](docs/workflow.png) -->
 
+
 A support request (name, email, subject, body) comes in. The agent looks up the customer, searches a small knowledge base, picks a category and priority, drafts a reply and files a ticket. The workflow returns the ticket as JSON.
+
+<img width="1225" height="493" alt="image" src="https://github.com/user-attachments/assets/b1e8a422-aaa2-4c19-b771-acae48add31c" />
 
 ## Run it in 5 minutes
 
